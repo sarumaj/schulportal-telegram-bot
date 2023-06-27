@@ -1,2 +1,3 @@
 # schulportal-telegram-bot
-Telegram Bot for Maciej
+
+Telegram Bot for Maciej 😁
