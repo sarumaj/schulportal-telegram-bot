@@ -1,6 +1,6 @@
 import os
 import re
-import random
+import asyncio
 from typing import Union, Optional
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
@@ -118,6 +118,29 @@ class Portal:
         """
         return self._loggedIn
 
+    @property
+    def session(self) -> Optional[ClientSession]:
+        """
+        Get the session object.
+
+        Returns:
+            ClientSession: An aiohttp.ClientSession object or None.
+        """
+        return self._session
+
+    @session.setter
+    def session(self, session: Optional[ClientSession]):
+        """
+        Set the session object.
+
+        Args:
+            session: An optional aiohttp.ClientSession object to use for HTTP requests.
+                     If not provided, a new session will be created.
+        """
+        self._session = session
+        if self._session is None:
+            self._session = ClientSession
+
     async def check_substitutes(self):
         """
         Check the substitutes (Vertretungsplan) on the portal.
@@ -186,10 +209,13 @@ class Portal:
             return tasks
 
     async def spoof_messages(self):
+        """
+        Under construction.
+        """
         if not self._loggedIn:
             raise NotSignedIn("Sign in first.")
         await self._session.get(SCHULPORTAL_NACHRICHTEN_URL)
-        # requires RSA handshake and decrption:
+        # requires RSA handshake and decryption:
         # GET ajax.php?f=rsaPublicKey
         # POST ajax.php?f=rsaHandshake&s={randint(0,2000)} {key:AES128 key self encrypted}
         async with self._session.post(
@@ -235,6 +261,9 @@ class Portal:
         Raises:
             LoginFailed: If the login process fails.
         """
+        if self._session.closed:
+            self._session = ClientSession()
+
         async with self._session.get(SCHULPORTAL_LOGIN_URL, params={"i": str(id)}) as response:
             content = await response.text()
             soup = getSoup(content)
@@ -272,12 +301,14 @@ class Portal:
         """
         await self._session.get(SCHULPORTAL_START_URL, params={"logout": "1"})
         self._loggedIn = False
+        if not self._session.closed:
+            await self._session.close()
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self._session.close()
+        await self.logout()
 
 
 async def main():
@@ -296,4 +327,6 @@ async def main():
         print(tasks)
 
         await portal.spoof_messages()
-        await portal.logout()
+
+if __name__ == "__main__":
+    asyncio.run(main())
