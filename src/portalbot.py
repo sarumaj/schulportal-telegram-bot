@@ -7,6 +7,8 @@ from telegram.ext import filters, ContextTypes, ConversationHandler, CommandHand
 from typing import Any, Optional
 from aiohttp import ClientSession
 from enum import Enum
+import asyncio
+from expiringdict import ExpiringDict
 
 from portal import Portal
 from errors import LoginFailed
@@ -47,11 +49,18 @@ class PortalBot(Portal):
 
     Attributes:
         logger: The logger object for logging bot-related information.
+        cache: Internal in-memory expiring cache.
     """
 
     def __init__(self, username: str, password: str, *, session: Optional[ClientSession] = None):
         super().__init__(username, password, session=session)
         self.logger = logging.getLogger(PortalBot.__class__.__name__)
+        self.cache = ExpiringDict(max_len=100, max_age_seconds=3600)
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.post_init())
+
+    async def post_init(self):
+        self.school_list = await self.list()
 
     def getHandler(self) -> ConversationHandler:
         """
@@ -103,7 +112,6 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "ask location")
-        self.school_list = await self.list()
         if message is None:
             message = (
                 "Hi! My name is <b>Schulportal Bot</b>. What school are you attending to? "
@@ -261,7 +269,7 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "ask_password")
-        context.user_data["username"] = update.message.text
+        context.user_data["username"] = update.message.text.strip()
         await update.message.delete()
         await update.message.reply_html(
             "Thank you! Then, I would like to ask you to enter your <b>password</b>:"
@@ -282,7 +290,7 @@ class PortalBot(Portal):
         """
         self.logger.log(logging.INFO, "verify_username_and_password")
 
-        context.user_data["password"] = update.message.text
+        context.user_data["password"] = update.message.text.strip()
         await update.message.delete()
 
         location = str(context.user_data["location"]).casefold()
@@ -326,20 +334,21 @@ class PortalBot(Portal):
         self.logger.log(logging.INFO, "monitor")
         await update.message.reply_html(
             "Thank you! Now, you are set and ready! "
-            "I will keep track of your Schulportal on your behalf once per hour!"
+            "I will keep track of your Schulportal on your behalf every minute!"
         )
 
-        job_queue = context.job_queue
-        job_queue.run_once(
+        if not context.job_queue.scheduler.running:
+            context.job_queue.scheduler.start()
+        context.job_queue.run_once(
             self.loop,
             0,
             user_id=context.user_data["user-id"],
             data=update,
             name=("loopback_of_%s" % context.user_data["user-id"])
         )
-        job_queue.run_repeating(
+        context.job_queue.run_repeating(
             self.loop,
-            60**2,
+            60,
             user_id=context.user_data["user-id"],
             data=update,
             name=("loopback_of_%s" % context.user_data["user-id"])
@@ -354,26 +363,35 @@ class PortalBot(Portal):
         Args:
             context: The context object from Telegram.
         """
-        user_data = context.user_data
+
+        user_id = context.user_data["user-id"]
         update = context.job.data
-        async with Portal(user_data["username"], user_data["password"]) as portal:
-            await portal.login(user_data["data-id"])
+        async with Portal(context.user_data["username"], context.user_data["password"]) as portal:
+            await portal.login(context.user_data["data-id"])
             todo = await portal.get_undone_homework()
-            for task in todo:
-                md5_hash = hashlib.md5(
-                    json.dumps(
-                        task,
-                        sort_keys=True
-                    ).encode('utf-8')
-                ).hexdigest()
+            if len(todo) == 0:
                 await update.message.reply_html(
-                    (
-                        f"#{md5_hash}\n"
-                        "You have open homework on following topic <b>{topic}</b>, "
-                        "assigned by your teacher <b>{teacher}</b> in <b>{subject}</b>. "
-                        "The due date is <b>{date}</b>, and that is what you are supposed to do:\n\n<strong>{content}</strong>"
-                    ).format(**task)
+                    "Hurray! There is no pending homework left!"
                 )
+            else:
+                for task in todo:
+                    md5_hash = hashlib.md5(
+                        json.dumps(
+                            task,
+                            sort_keys=True
+                        ).encode('utf-8')
+                    ).hexdigest()
+                    if f"{user_id}.{md5_hash}" in self.cache:
+                        continue
+                    self.cache[f"{user_id}.{md5_hash}"] = task
+                    await update.message.reply_html(
+                        (
+                            f"#{md5_hash}\n"
+                            "You have open homework on following topic <b>{topic}</b>, "
+                            "assigned by your teacher <b>{teacher}</b> in <b>{subject}</b>. "
+                            "The due date is <b>{date}</b>, and that is what you are supposed to do:\n\n<strong>{content}</strong>"
+                        ).format(**task)
+                    )
 
     async def done(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """
@@ -393,7 +411,7 @@ class PortalBot(Portal):
                 f"loopback_of_{update.effective_user.id}"
             )
         ]
-        await context.job_queue.stop(False)
+
         await update.message.reply_html(
             "I am sad to see you going, but I am looking forward to seeing you again! "
             "Take care!",

@@ -1,22 +1,20 @@
-import os
 import re
-import asyncio
 from typing import Union, Optional
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 from aiohttp import ClientSession
-from errors import LoginFailed, NotSignedIn, NothingToReturn
-
-SCHULPORTAL_USERNAME = os.environ.get("SCHULPORTAL_USERNAME", "")
-SCHULPORTAL_PASSWORD = os.environ.get("SCHULPORTAL_PASSWORD", "")
-SCHULPORTAL_SCHOOL_ID = os.environ.get("SCHULPORTAL_SCHOOL_ID", "5114")
-
-SCHULPORTAL_START_URL = os.environ["SCHULPORTAL_START_URL"]
-SCHULPORTAL_LOGIN_URL = os.environ["SCHULPORTAL_LOGIN_URL"]
-SCHULPORTAL_VERTRETUNGSPLAN_URL = os.environ["SCHULPORTAL_VERTRETUNGSPLAN_URL"]
-SCHULPORTAL_MEINUNTERRICHT_URL = os.environ["SCHULPORTAL_MEINUNTERRICHT_URL"]
-SCHULPORTAL_NACHRICHTEN_URL = os.environ["SCHULPORTAL_NACHRICHTEN_URL"]
-SCHULPORTAL_AJAX_URL = os.environ["SCHULPORTAL_AJAX_URL"]
+from errors import (
+    LoginFailed,
+    NotSignedIn,
+    NothingToReturn
+)
+from config import (
+    SCHULPORTAL_LOGIN_URL,
+    SCHULPORTAL_MEINUNTERRICHT_URL,
+    SCHULPORTAL_NACHRICHTEN_URL,
+    SCHULPORTAL_START_URL,
+    SCHULPORTAL_VERTRETUNGSPLAN_URL
+)
 
 
 def getSoup(blob: Union[str, bytes]) -> BeautifulSoup:
@@ -325,25 +323,3 @@ class Portal:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.logout()
-
-
-async def main():
-    """
-    Main function to run the portal interaction flow.
-    """
-    async with Portal(SCHULPORTAL_USERNAME, SCHULPORTAL_PASSWORD) as portal:
-        schools = await portal.list()
-        print(next(filter(lambda x: x["data-id"]
-              == SCHULPORTAL_SCHOOL_ID, schools)))
-        await portal.login(SCHULPORTAL_SCHOOL_ID)
-        try:
-            await portal.check_substitutes()
-        except NothingToReturn as ex:
-            print(*ex.args)
-        tasks = await portal.get_undone_homework()
-        print(tasks)
-
-        await portal.spoof_messages()
-
-if __name__ == "__main__":
-    asyncio.run(main())

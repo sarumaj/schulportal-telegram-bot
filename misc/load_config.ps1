@@ -1,4 +1,10 @@
-$variables = Select-String -Path config.env -Pattern '^\s*[^\s=#]+=[^\s]+$' -Raw
+param (
+    # path to an .env file
+    [Parameter(Mandatory=$true)]
+    [string]$path
+)
+
+$variables = Select-String -Path $path -Pattern '^\s*[^\s=#]+=[^\s]+$' -Raw
 
 foreach($var in $variables) {
     $keyVal = $var -split '=', 2
