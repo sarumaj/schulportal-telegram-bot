@@ -18,6 +18,7 @@ SCHULPORTAL_MEINUNTERRICHT_URL = os.environ["SCHULPORTAL_MEINUNTERRICHT_URL"]
 SCHULPORTAL_NACHRICHTEN_URL = os.environ["SCHULPORTAL_NACHRICHTEN_URL"]
 SCHULPORTAL_AJAX_URL = os.environ["SCHULPORTAL_AJAX_URL"]
 
+
 def getSoup(blob: Union[str, bytes]) -> BeautifulSoup:
     """
     Convert the given HTML blob into a BeautifulSoup object.
@@ -44,23 +45,32 @@ def buildArgs(blob: str) -> list[str]:
     return list(
         filter(
             lambda x: x != '',
-            re.compile("([^!.?]+[!.?])\s").split(" ".join(map(lambda x: str(x).strip(), blob.splitlines())))
+            re.compile(
+                "([^!.?]+[!.?])\s").split(" ".join(map(lambda x: str(x).strip(), blob.splitlines())))
         )
     )
 
+
 class Portal:
-    def __init__(self, username: str, password: str, *, session: Optional[ClientSession]=None):
-        """
-        Initialize a Portal object with the provided username, password, and session.
+    """
+    A class representing a Schulportal.
 
-        Args:
-            username: The username used for authentication.
-            password: The password used for authentication.
+    This class provides the functionality to authenticate and interact with the Schulportal.
 
-        Keywargs:
-            session: An optional aiohttp.ClientSession object to use for HTTP requests.
-                     If not provided, a new session will be created.
-        """
+    Args:
+        username (str): The username used for authentication.
+        password (str): The password used for authentication.
+        session (Optional[ClientSession]): An optional aiohttp.ClientSession object to use for HTTP requests.
+            If not provided, a new session will be created.
+
+    Attributes:
+        username (str): The username associated with the Portal object.
+        password (str): The password associated with the Portal object.
+        session (Optional[ClientSession]): The session object to use for making HTTP requests.
+        loggedIn (bool): Indicates whether the Portal object is currently logged in.
+    """
+
+    def __init__(self, username: str, password: str, *, session: Optional[ClientSession] = None):
         self.username = username
         self.password = password
         self._session = session
@@ -173,6 +183,7 @@ class Portal:
 
         Returns:
             A list of dictionaries representing undone homework tasks. Each dictionary contains the following keys:
+                - "subject": The name of the related subject.
                 - "topic": The topic or title of the homework task.
                 - "teacher": The name of the teacher associated with the homework task.
                 - "date": The date of the homework task.
@@ -185,19 +196,24 @@ class Portal:
             content = await response.text()
             soup = getSoup(content)
             tasks = []
-            for el in soup.find_all("tr", attrs={"class":"printable"}):
-                if el.find(attrs={"class":"undone"}) is None:
+            for el in soup.find_all("tr", attrs={"class": "printable"}):
+                if el.find(attrs={"class": "undone"}) is None:
                     continue
                 subject = el.select_one('span[class="name"]')
-                teacher = el.select_one('span.teacher > div.btn-group > button')
+                teacher = el.select_one(
+                    'span.teacher > div.btn-group > button')
                 topic = el.select_one('b[class="thema"]')
                 date = el.select_one('span[class="datum"]')
                 content = el.select_one('div.realHomework')
-                task = {}
+                task = dict.fromkeys(
+                    ["subject", "topic", "teacher", "date", "content"],
+                    "unknown"
+                )
                 if not subject is None:
-                    task["topic"] = topic.extract().getText().strip()
+                    task["subject"] = subject.extract().getText().strip()
                 if not teacher is None:
-                    task["teacher"] = teacher.extract().get("title", "").strip()
+                    task["teacher"] = teacher.extract().get(
+                        "title", "").strip()
                 if not topic is None:
                     task["topic"] = topic.extract().getText().strip()
                 if not date is None:
@@ -233,7 +249,6 @@ class Portal:
             content = await response.text()
             print(content)
 
-
     async def list(self) -> list[dict[str, str]]:
         """
         Get a list of schools from the portal.
@@ -245,7 +260,8 @@ class Portal:
         async with self._session.get(SCHULPORTAL_START_URL) as response:
             content = await response.text()
             soup = getSoup(content)
-            toDict = lambda x: {"school": str(x[0]).strip(), "city": str(x[1]).strip()}
+            def toDict(x): return {"school": str(
+                x[0]).strip(), "city": str(x[1]).strip()}
             return [
                 {**toDict(tuple(el.strings)), "data-id": el.get("data-id")}
                 for el in soup.find_all("a", attrs={"class": "list-group-item"})
@@ -317,7 +333,8 @@ async def main():
     """
     async with Portal(SCHULPORTAL_USERNAME, SCHULPORTAL_PASSWORD) as portal:
         schools = await portal.list()
-        print(next(filter(lambda x: x["data-id"] == SCHULPORTAL_SCHOOL_ID, schools)))
+        print(next(filter(lambda x: x["data-id"]
+              == SCHULPORTAL_SCHOOL_ID, schools)))
         await portal.login(SCHULPORTAL_SCHOOL_ID)
         try:
             await portal.check_substitutes()
