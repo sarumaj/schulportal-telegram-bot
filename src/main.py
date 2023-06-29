@@ -15,7 +15,7 @@ logging.basicConfig(
 logging.getLogger('httpx').setLevel(logging.WARNING)
 
 
-if __name__ == "__main__":
+def main():
     application = ApplicationBuilder().token(TELEGRAM_API_TOKEN).build()
     portal = PortalBot("", "")
     application.add_handler(portal.getHandler())
@@ -31,3 +31,7 @@ if __name__ == "__main__":
             port=int(os.environ.get("PORT", "8443")),
             webhook_url=HEROKU_WEB_URL,
         )
+
+
+if __name__ == "__main__":
+    main()
