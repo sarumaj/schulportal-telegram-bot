@@ -9,9 +9,11 @@ from aiohttp import ClientSession
 from enum import Enum
 import asyncio
 from expiringdict import ExpiringDict
+from pychatgpt import Chat
 
 from portal import Portal
 from errors import LoginFailed
+from config import CHATGPT_USER_EMAIL, CHATGPT_USER_PASSWORD
 
 
 class ConversationStates(Enum):
@@ -91,7 +93,10 @@ class PortalBot(Portal):
                     MessageHandler(textAndNotdoneOrCommand,
                                    self.verify_username_and_password),
                 ],
-                ConversationStates.LOOP.value: [],
+                ConversationStates.LOOP.value: [
+                    MessageHandler(textAndNotdoneOrCommand,
+                                   self.talk_with_chatgpt)
+                ],
             },
             fallbacks=[
                 MessageHandler(doneFilter, self.done),
@@ -392,6 +397,23 @@ class PortalBot(Portal):
                             "The due date is <b>{date}</b>, and that is what you are supposed to do:\n\n<strong>{content}</strong>"
                         ).format(**task)
                     )
+
+    async def talk_with_chatgpt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        try:
+            chat = Chat(CHATGPT_USER_EMAIL, CHATGPT_USER_PASSWORD)
+        except Exception as ex:
+            await update.message.reply_text("Upsala!\n%s" % "\n".join(ex.args))
+        else:
+            answer, parent_conversation_id, conversation_id = chat.ask(
+                update.message.text,
+                conversation_id=context.user_data.get("conversation_id"),
+                previous_convo_id=context.user_data.get(
+                    "parent_conversation_id"),
+            )
+            context.user_data["parent_conversation_id"] = parent_conversation_id
+            context.user_data["conversation_id"] = conversation_id
+            await update.message.reply_text(answer)
+        return ConversationStates.LOOP.value
 
     async def done(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """

@@ -4,6 +4,8 @@ from pathlib import Path
 
 load_dotenv(Path(__file__).parents[1] / "config.env")
 
+CHATGPT_USER_EMAIL = os.environ["CHATGPT_USER_EMAIL"]
+CHATGPT_USER_PASSWORD = os.environ["CHATGPT_USER_PASSWORD"]
 APP_RUN_MODE = os.environ.get("APP_RUN_MODE", "DEV")
 HEROKU_WEB_URL = os.environ["HEROKU_WEB_URL"]
 SCHULPORTAL_AJAX_URL = os.environ["SCHULPORTAL_AJAX_URL"]

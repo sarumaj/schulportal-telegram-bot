@@ -259,11 +259,20 @@ class Portal:
         async with self._session.get(SCHULPORTAL_START_URL) as response:
             content = await response.text()
             soup = getSoup(content)
-            def toDict(x): return {"school": str(
-                x[0]).strip(), "city": str(x[1]).strip()}
+
+            def toDict(el):
+                s = tuple(el.strings)
+                d = {
+                    "school": str(s[0]).strip(),
+                    "city": str(s[1]).strip(),
+                    "data-id": el.get("data-id")
+                }
+                if str(d["city"]).startswith("Frankfurt"):
+                    d["city"] = "Frankfurt a. M."
+                return d
+
             return [
-                {**toDict(tuple(el.strings)), "data-id": el.get("data-id")}
-                for el in soup.find_all("a", attrs={"class": "list-group-item"})
+                toDict(el) for el in soup.find_all("a", attrs={"class": "list-group-item"})
             ]
 
     async def login(self, id: str):
