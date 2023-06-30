@@ -3,6 +3,7 @@ from typing import Union, Optional
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 from aiohttp import ClientSession
+
 from errors import (
     LoginFailed,
     NotSignedIn,

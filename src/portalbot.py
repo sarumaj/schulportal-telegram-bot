@@ -55,7 +55,7 @@ class PortalBot(Portal):
     def __init__(self, username: str, password: str, *, session: Optional[ClientSession] = None):
         super().__init__(username, password, session=session)
         self.logger = logging.getLogger(PortalBot.__class__.__name__)
-        self.cache = ExpiringDict(max_len=100, max_age_seconds=3600)
+        self.cache = ExpiringDict(max_len=100, max_age_seconds=3600*6)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.post_init())
 
