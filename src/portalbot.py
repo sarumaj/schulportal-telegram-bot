@@ -375,23 +375,26 @@ class PortalBot(Portal):
             await portal.login(context.user_data["data-id"])
             todo = await portal.get_undone_homework()
             if len(todo) == 0:
-                await update.message.reply_html(
-                    "Hurray! There is no pending homework left!"
-                )
+                msg = "Hurray! There is no pending homework left!"
+                hash = hashlib.sha256(msg.encode('utf-8')).hexdigest()
+                if f"{user_id}.{hash}" in self.cache:
+                    return
+                self.cache[f"{user_id}.{hash}"] = msg
+                await update.message.reply_html(msg)
             else:
                 for task in todo:
-                    md5_hash = hashlib.md5(
+                    hash = hashlib.sha256(
                         json.dumps(
                             task,
                             sort_keys=True
                         ).encode('utf-8')
                     ).hexdigest()
-                    if f"{user_id}.{md5_hash}" in self.cache:
+                    if f"{user_id}.{hash}" in self.cache:
                         continue
-                    self.cache[f"{user_id}.{md5_hash}"] = task
+                    self.cache[f"{user_id}.{hash}"] = task
                     await update.message.reply_html(
                         (
-                            f"#{md5_hash}\n"
+                            f"#{hash}\n"
                             "You have open homework on following topic <b>{topic}</b>, "
                             "assigned by your teacher <b>{teacher}</b> in <b>{subject}</b>. "
                             "The due date is <b>{date}</b>, and that is what you are supposed to do:\n\n<strong>{content}</strong>"
