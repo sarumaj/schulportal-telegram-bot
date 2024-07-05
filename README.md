@@ -1,3 +1,8 @@
+[![build_and_release](https://github.com/sarumaj/schulportal-telegram-bot/actions/workflows/deploy.yml/badge.svg)](https://github.com/sarumaj/schulportal-telegram-bot/actions/workflows/deploy.yml)
+[![Libraries.io dependency status for GitHub repo](https://img.shields.io/librariesio/github/sarumaj/schulportal-telegram-bot)](https://github.com/sarumaj/schulportal-telegram-bot/blob/main/requirements.txt)
+
+---
+
 # schulportal-telegram-bot
 
 Telegram Bot for Maciej (best brother whom one can wish to have 😁).
