@@ -21,6 +21,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install git-crypt and decrypt repository
+        env:
+          GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+        run: |
+          sudo apt-get update && \
+          sudo apt-get install -y git-crypt && \
+          echo "$GIT_CRYPT_KEY" | base64 -d | git-crypt unlock - && \
+          git-crypt status -e
+
       - name: Deploy to Heroku
         uses: akhileshns/heroku-deploy@v3.13.15
         with:
