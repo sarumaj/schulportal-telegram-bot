@@ -32,7 +32,7 @@ lxml==4.9.2
 magic-filter==1.0.9
 multidict==6.0.4
 Pillow==9.5.0
-pycparser==2.21
+pycparser==2.23
 python-dotenv==1.0.0
 python-telegram-bot==20.3
 pytz==2023.3
