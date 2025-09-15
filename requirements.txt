@@ -29,7 +29,7 @@ httpx==0.24.1
 hyperframe==6.0.1
 idna==3.4
 lxml==4.9.2
-magic-filter==1.0.9
+magic-filter==1.0.12
 multidict==6.0.4
 Pillow==9.5.0
 pycparser==2.21
