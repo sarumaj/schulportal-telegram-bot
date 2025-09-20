@@ -27,7 +27,7 @@ html5lib==1.1
 httpcore==0.17.2
 httpx==0.24.1
 hyperframe==6.0.1
-idna==3.4
+idna==3.10
 lxml==4.9.2
 magic-filter==1.0.9
 multidict==6.0.4
