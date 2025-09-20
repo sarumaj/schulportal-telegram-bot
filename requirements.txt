@@ -47,6 +47,6 @@ tinycss2==1.4.0
 tls-client==1.0.1
 tornado==6.5.2
 tzlocal==5.3.1
-urllib3==2.0.3
+urllib3==2.5.0
 webencodings==0.5.1
 yarl==1.20.1
