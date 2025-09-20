@@ -41,7 +41,7 @@ requests==2.31.0
 six==1.16.0
 sniffio==1.3.0
 socksio==1.0.0
-soupsieve==2.4.1
+soupsieve==2.8
 svglib==1.5.1
 tinycss2==1.4.0
 tls-client==1.0.1
