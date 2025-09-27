@@ -34,7 +34,7 @@ multidict==6.6.4
 Pillow==11.3.0
 pycparser==2.23
 python-dotenv==1.1.1
-python-telegram-bot==22.4
+python-telegram-bot==22.5
 pytz==2025.2
 reportlab==4.4.4
 requests==2.32.5
