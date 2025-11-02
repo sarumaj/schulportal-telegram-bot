@@ -10,7 +10,7 @@ Babel==2.17.0
 beautifulsoup4==4.14.2
 bs4==0.0.2
 cachetools==6.2.0
-certifi==2025.8.3
+certifi==2025.10.5
 cffi==2.0.0
 charset-normalizer==3.4.3
 chatgptpy==1.0.8
