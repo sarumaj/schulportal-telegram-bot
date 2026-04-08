@@ -1,21 +1,19 @@
 import re
-from typing import Union, Optional
-from bs4 import BeautifulSoup
+from types import TracebackType
+from typing import Dict, List, Optional, Union
 from urllib.parse import urlencode
-from aiohttp import ClientSession
 
-from errors import (
-    LoginFailed,
-    NotSignedIn,
-    NothingToReturn
-)
+from aiohttp import ClientSession
+from bs4 import BeautifulSoup, Tag
+
 from config import (
     SCHULPORTAL_LOGIN_URL,
     SCHULPORTAL_MEINUNTERRICHT_URL,
     SCHULPORTAL_NACHRICHTEN_URL,
     SCHULPORTAL_START_URL,
-    SCHULPORTAL_VERTRETUNGSPLAN_URL
+    SCHULPORTAL_VERTRETUNGSPLAN_URL,
 )
+from errors import LoginFailed, NothingToReturn, NotSignedIn
 
 
 def getSoup(blob: Union[str, bytes]) -> BeautifulSoup:
@@ -44,7 +42,8 @@ def buildArgs(blob: str) -> list[str]:
     return list(
         filter(
             lambda x: x != '',
-            re.compile(r"([^!.?]+[!.?])\s").split(" ".join(map(lambda x: str(x).strip(), blob.splitlines())))
+            re.compile(
+                r"([^!.?]+[!.?])\s").split(" ".join(map(lambda x: str(x).strip(), blob.splitlines())))
         )
     )
 
@@ -72,8 +71,6 @@ class Portal:
         self.username = username
         self.password = password
         self._session = session
-        if self._session is None:
-            self._session = ClientSession()
         self._loggedIn = False
 
     @property
@@ -126,6 +123,15 @@ class Portal:
         """
         return self._loggedIn
 
+    async def init_and_get_session(self) -> ClientSession:
+        """
+        Initialize the session object if it is not already initialized or if it is closed.
+        """
+        if self._session is None or self._session.closed:
+            self._session = ClientSession()
+
+        return self._session
+
     @property
     def session(self) -> Optional[ClientSession]:
         """
@@ -143,11 +149,9 @@ class Portal:
 
         Args:
             session: An optional aiohttp.ClientSession object to use for HTTP requests.
-                     If not provided, a new session will be created.
+                     If not provided, a new session will be created lazily on first use.
         """
         self._session = session
-        if self._session is None:
-            self._session = ClientSession
 
     async def check_substitutes(self):
         """
@@ -161,7 +165,7 @@ class Portal:
         if not self._loggedIn:
             raise NotSignedIn("Sign in first.")
 
-        async with self._session.get(SCHULPORTAL_VERTRETUNGSPLAN_URL) as response:
+        async with (await self.init_and_get_session()).get(SCHULPORTAL_VERTRETUNGSPLAN_URL) as response:
             content = await response.text()
             soup = getSoup(content)
             alert = soup.select_one('div[role="alert"]')
@@ -190,10 +194,10 @@ class Portal:
         if not self._loggedIn:
             raise NotSignedIn("Sign in first.")
 
-        async with self._session.get(SCHULPORTAL_MEINUNTERRICHT_URL) as response:
+        async with (await self.init_and_get_session()).get(SCHULPORTAL_MEINUNTERRICHT_URL) as response:
             content = await response.text()
             soup = getSoup(content)
-            tasks = []
+            tasks: List[Dict[str, str]] = []
             for el in soup.find_all("tr", attrs={"class": "printable"}):
                 if el.find(attrs={"class": "undone"}) is None:
                     continue
@@ -210,8 +214,8 @@ class Portal:
                 if not subject is None:
                     task["subject"] = subject.extract().getText().strip()
                 if not teacher is None:
-                    task["teacher"] = teacher.extract().get(
-                        "title", "").strip()
+                    task["teacher"] = '{}'.format(teacher.extract().get("title", "")).strip(
+                    )
                 if not topic is None:
                     task["topic"] = topic.extract().getText().strip()
                 if not date is None:
@@ -228,11 +232,11 @@ class Portal:
         """
         if not self._loggedIn:
             raise NotSignedIn("Sign in first.")
-        await self._session.get(SCHULPORTAL_NACHRICHTEN_URL)
+        await (await self.init_and_get_session()).get(SCHULPORTAL_NACHRICHTEN_URL)
         # requires RSA handshake and decryption:
         # GET ajax.php?f=rsaPublicKey
         # POST ajax.php?f=rsaHandshake&s={randint(0,2000)} {key:AES128 key self encrypted}
-        async with self._session.post(
+        async with (await self.init_and_get_session()).post(
             SCHULPORTAL_NACHRICHTEN_URL,
             data=urlencode({
                 "a": "headers",
@@ -255,16 +259,16 @@ class Portal:
             list[dict[str:str]]: A list of dictionaries representing the schools, where each dictionary
             contains the keys 'school', 'city', and 'data-id'.
         """
-        async with self._session.get(SCHULPORTAL_START_URL) as response:
+        async with (await self.init_and_get_session()).get(SCHULPORTAL_START_URL) as response:
             content = await response.text()
             soup = getSoup(content)
 
-            def toDict(el):
+            def toDict(el: Tag) -> dict[str, str]:
                 s = tuple(el.strings)
-                d = {
+                d: Dict[str, str] = {
                     "school": str(s[0]).strip(),
                     "city": str(s[1]).strip(),
-                    "data-id": el.get("data-id")
+                    "data-id": "{}".format(el.get("data-id") or "").strip()
                 }
                 if str(d["city"]).startswith("Frankfurt"):
                     d["city"] = "Frankfurt a. M."
@@ -284,14 +288,11 @@ class Portal:
         Raises:
             LoginFailed: If the login process fails.
         """
-        if self._session.closed:
-            self._session = ClientSession()
-
-        async with self._session.get(SCHULPORTAL_LOGIN_URL, params={"i": str(id)}) as response:
+        async with (await self.init_and_get_session()).get(SCHULPORTAL_LOGIN_URL, params={"i": str(id)}) as response:
             content = await response.text()
             soup = getSoup(content)
             form = {
-                el.get("name"): el.get("value")
+                f"{el.get("name")}": f"{el.get("value")}"
                 for el in soup.select('input[type="hidden"]')
             }
             form.update({
@@ -300,14 +301,14 @@ class Portal:
                 "password": self.password,
             })
 
-            await self._session.post(
+            await (await self.init_and_get_session()).post(
                 SCHULPORTAL_LOGIN_URL,
                 params={"i": str(id)},
                 data=urlencode(form),
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
 
-        async with self._session.get(SCHULPORTAL_START_URL, params={"i": str(id)}) as response:
+        async with (await self.init_and_get_session()).get(SCHULPORTAL_START_URL, params={"i": str(id)}) as response:
             content = await response.text()
             soup = getSoup(content)
             errForm = soup.select_one('div[id="errorForm"]')
@@ -320,15 +321,16 @@ class Portal:
 
     async def logout(self):
         """
-        Log out from the portal.
+        Log out from the portal and close the underlying HTTP session.
         """
-        await self._session.get(SCHULPORTAL_START_URL, params={"logout": "1"})
-        self._loggedIn = False
-        if not self._session.closed:
+        if self._session is not None and not self._session.closed:
+            await self._session.get(SCHULPORTAL_START_URL, params={"logout": "1"})
             await self._session.close()
+        self._loggedIn = False
 
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Optional[type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]):
+        _ = (exc_type, exc_val, exc_tb)  # unused
         await self.logout()
