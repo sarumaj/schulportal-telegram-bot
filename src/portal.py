@@ -44,8 +44,7 @@ def buildArgs(blob: str) -> list[str]:
     return list(
         filter(
             lambda x: x != '',
-            re.compile(
-                "([^!.?]+[!.?])\s").split(" ".join(map(lambda x: str(x).strip(), blob.splitlines())))
+            re.compile(r"([^!.?]+[!.?])\s").split(" ".join(map(lambda x: str(x).strip(), blob.splitlines())))
         )
     )
 
