@@ -2,6 +2,13 @@ FROM python:3.14-slim AS base
 
 FROM base as builder
 
+# Needed to compile pycairo (and other native deps)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    libcairo2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN python -m pip install --no-cache-dir -U pip wheel
 
 COPY ./requirements.txt /tmp/
