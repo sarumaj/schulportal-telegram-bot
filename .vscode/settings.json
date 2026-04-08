@@ -2,5 +2,22 @@
   "[python]": {
     "editor.defaultFormatter": "ms-python.autopep8"
   },
-  "python.formatting.provider": "none"
+  "python.formatting.provider": "none",
+  "cSpell.words": [
+    "convo",
+    "dotenv",
+    "libcairo",
+    "MEINUNTERRICHT",
+    "NACHRICHTEN",
+    "Notdone",
+    "Opsala",
+    "portalbot",
+    "pycairo",
+    "pychatgpt",
+    "SCHULPORTAL",
+    "sublists",
+    "thema",
+    "Upsala",
+    "VERTRETUNGSPLAN"
+  ]
 }

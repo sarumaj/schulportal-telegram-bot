@@ -1,18 +1,19 @@
+import hashlib
+import json
 import logging
 import re
-import json
-import hashlib
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
-from telegram.ext import filters, ContextTypes, ConversationHandler, CommandHandler, MessageHandler
-from typing import Any, Optional
-from aiohttp import ClientSession
 from enum import Enum
-from expiringdict import ExpiringDict
-from pychatgpt import Chat
+from typing import Any, Optional, Tuple, cast
 
-from portal import Portal
-from errors import LoginFailed
+from aiohttp import ClientSession
+from expiringdict import ExpiringDict  # type: ignore[reportMissingTypeStubs]
+from pychatgpt import Chat  # type: ignore[reportMissingTypeStubs]
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import CommandHandler, ContextTypes, ConversationHandler, JobQueue, MessageHandler, filters
+
 from config import CHATGPT_USER_EMAIL, CHATGPT_USER_PASSWORD
+from errors import LoginFailed
+from portal import Portal
 
 
 class ConversationStates(Enum):
@@ -55,13 +56,13 @@ class PortalBot(Portal):
 
     def __init__(self, username: str, password: str, *, session: Optional[ClientSession] = None):
         super().__init__(username, password, session=session)
-        self.logger = logging.getLogger(PortalBot.__class__.__name__)
+        self.logger = logging.getLogger("PortalBot")
         self.cache = ExpiringDict(max_len=100, max_age_seconds=3600*6)
 
     async def post_init(self):
         self.school_list = await self.list()
 
-    def getHandler(self) -> ConversationHandler:
+    def getHandler(self) -> ConversationHandler[Any]:
         """
         Returns the ConversationHandler for handling the bot's conversation flow.
 
@@ -119,6 +120,10 @@ class PortalBot(Portal):
                 "Hi! My name is <b>Schulportal Bot</b>. What school are you attending to? "
                 "May I visit you there? Please, choose the <b>location</b> of your school first:"
             )
+
+        if update.message is None:
+            return ConversationStates.CHOOSING_LOCATION.value
+
         await update.message.reply_html(
             message,
             reply_markup=ReplyKeyboardMarkup(
@@ -149,13 +154,17 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "verify_location")
-        text = update.message.text
+        if update.message is None:
+            return ConversationStates.CHOOSING_LOCATION.value
+
+        text = (update.message.text or "")
         regex = re.compile("^(%s)$" % "|".join({
             re.escape(school["city"]) for school in self.school_list
         }))
         if regex.match(text) is not None:
             self.logger.log(logging.INFO, "location verified")
-            context.user_data["location"] = text
+            if context.user_data is not None:
+                context.user_data["location"] = text
             return await self.ask_school(update, context)
 
         else:
@@ -178,12 +187,15 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "ask_school")
+        if context.user_data is None or update.message is None:
+            return ConversationStates.CHOOSING_LOCATION.value
+
         location = context.user_data["location"]
-        if message is None:
-            message = (
-                f"Cool! I love <b>{location}</b>! Now, you made me curious about your school! "
-                "Please, tell me what school are you attending to:"
-            )
+        message = (
+            f"Cool! I love <b>{location}</b>! Now, you made me curious about your school! "
+            "Please, tell me what school are you attending to:"
+        )
+
         await update.message.reply_html(
             message,
             reply_markup=ReplyKeyboardMarkup(
@@ -216,8 +228,12 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "verify_school")
+
+        if context.user_data is None or update.message is None:
+            return ConversationStates.CHOOSING_SCHOOL.value
+
         location = context.user_data["location"]
-        text = update.message.text
+        text = (update.message.text or "").strip()
         regex = re.compile("^(%s)$" % "|".join({
             re.escape(school["school"]) for school in self.school_list
             if location.casefold() in str(school["city"]).casefold()
@@ -248,6 +264,10 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "ask_username")
+
+        if context.user_data is None or update.message is None:
+            return ConversationStates.CHOOSING_SCHOOL.value
+
         school = context.user_data["school"]
         if message is None:
             message = (
@@ -255,6 +275,7 @@ class PortalBot(Portal):
                 "If you like, I can check the Schulportal on your behalf! "
                 "I would like to ask you to enter your <b>username</b>:"
             )
+
         await update.message.reply_html(message, reply_markup=ReplyKeyboardRemove())
 
         return ConversationStates.TYPING_USERNAME.value
@@ -271,7 +292,13 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "ask_password")
-        context.user_data["username"] = update.message.text.strip()
+
+        if context.user_data is None or update.message is None:
+            return ConversationStates.TYPING_USERNAME.value
+
+        context.user_data["username"] = (
+            update.message.text or "").strip()
+
         await update.message.delete()
         await update.message.reply_html(
             "Thank you! Then, I would like to ask you to enter your <b>password</b>:"
@@ -292,7 +319,10 @@ class PortalBot(Portal):
         """
         self.logger.log(logging.INFO, "verify_username_and_password")
 
-        context.user_data["password"] = update.message.text.strip()
+        if context.user_data is None or update.message is None or update.effective_user is None:
+            return ConversationStates.TYPING_PASSWORD.value
+
+        context.user_data["password"] = (update.message.text or "").strip()
         await update.message.delete()
 
         location = str(context.user_data["location"]).casefold()
@@ -306,7 +336,7 @@ class PortalBot(Portal):
                 school in str(x["school"]).casefold()
             ]),
             self.school_list
-        ), {"data-id", ""})["data-id"]
+        ), {"data-id": ""})["data-id"]
         context.user_data["user-id"] = update.effective_user.id
 
         async with Portal(context.user_data["username"], context.user_data["password"]) as portal:
@@ -334,21 +364,30 @@ class PortalBot(Portal):
             The next conversation state.
         """
         self.logger.log(logging.INFO, "monitor")
+        job_queue = cast(
+            JobQueue[Any] | None,
+            context.job_queue,  # type: ignore[reportUnknownMemberType]
+        )
+        if context.user_data is None or update.message is None or job_queue is None:
+            return ConversationStates.TYPING_PASSWORD.value
+
         await update.message.reply_html(
             "Thank you! Now, you are set and ready! "
             "I will keep track of your Schulportal on your behalf every minute!"
         )
 
-        if not context.job_queue.scheduler.running:
-            context.job_queue.scheduler.start()
-        context.job_queue.run_once(
+        if not job_queue.scheduler.running:
+            job_queue.scheduler.start()
+
+        job_queue.run_once(
             self.loop,
             0,
             user_id=context.user_data["user-id"],
             data=update,
             name=("loopback_of_%s" % context.user_data["user-id"])
         )
-        context.job_queue.run_repeating(
+
+        job_queue.run_repeating(
             self.loop,
             60,
             user_id=context.user_data["user-id"],
@@ -366,8 +405,15 @@ class PortalBot(Portal):
             context: The context object from Telegram.
         """
 
+        if context.user_data is None or context.job is None:
+            return
+
         user_id = context.user_data["user-id"]
-        update = context.job.data
+        update = cast(Update | None, context.job.data)
+
+        if update is None or update.message is None:
+            return
+
         async with Portal(context.user_data["username"], context.user_data["password"]) as portal:
             await portal.login(context.user_data["data-id"])
             todo = await portal.get_undone_homework()
@@ -378,6 +424,7 @@ class PortalBot(Portal):
                     return
                 self.cache[f"{user_id}.{hash}"] = msg
                 await update.message.reply_html(msg)
+
             else:
                 for task in todo:
                     hash = hashlib.sha256(
@@ -399,16 +446,23 @@ class PortalBot(Portal):
                     )
 
     async def talk_with_chatgpt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        if update.message is None or context.user_data is None or update.message.text is None:
+            return ConversationStates.LOOP.value
+
         try:
             chat = Chat(CHATGPT_USER_EMAIL, CHATGPT_USER_PASSWORD)
         except Exception as ex:
             await update.message.reply_text("Upsala!\n%s" % "\n".join(ex.args))
         else:
-            answer, parent_conversation_id, conversation_id = chat.ask(
+            response = chat.ask(  # type: ignore[reportUnknownVariableType,reportUnknownMemberType]
                 update.message.text,
                 conversation_id=context.user_data.get("conversation_id"),
                 previous_convo_id=context.user_data.get(
                     "parent_conversation_id"),
+            )
+            answer, parent_conversation_id, conversation_id = cast(
+                Tuple[str, Optional[str], Optional[str]],
+                response,
             )
             context.user_data["parent_conversation_id"] = parent_conversation_id
             context.user_data["conversation_id"] = conversation_id
@@ -426,18 +480,26 @@ class PortalBot(Portal):
         Returns:
             The next terminating conversation state.
         """
-        context.user_data.clear()
 
-        [
-            job.schedule_removal() for job in context.job_queue.get_jobs_by_name(
-                f"loopback_of_{update.effective_user.id}"
-            )
-        ]
+        if context.user_data is not None:
+            context.user_data.clear()
 
-        await update.message.reply_html(
-            "I am sad to see you going, but I am looking forward to seeing you again! "
-            "Take care!",
-            reply_markup=ReplyKeyboardRemove(),
+        job_queue = cast(
+            JobQueue[Any] | None,
+            context.job_queue,  # type: ignore[reportUnknownMemberType]
         )
+        if job_queue:
+            [
+                job.schedule_removal() for job in job_queue.get_jobs_by_name(
+                    f"loopback_of_{update.effective_user.id if update.effective_user else ''}"
+                )
+            ]
+
+        if update.message is not None:
+            await update.message.reply_html(
+                "I am sad to see you going, but I am looking forward to seeing you again! "
+                "Take care!",
+                reply_markup=ReplyKeyboardRemove(),
+            )
 
         return ConversationHandler.END

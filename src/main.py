@@ -1,12 +1,11 @@
 import logging
 import os
-from telegram.ext import ApplicationBuilder, Application
+from typing import Any, cast
+
+from telegram.ext import Application, ApplicationBuilder, ConversationHandler
+
+from config import APP_RUN_MODE, HEROKU_WEB_URL, TELEGRAM_API_TOKEN
 from portalbot import PortalBot
-from config import (
-    APP_RUN_MODE,
-    HEROKU_WEB_URL,
-    TELEGRAM_API_TOKEN
-)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,20 +17,24 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 def main():
     portal = PortalBot("", "")
 
-    async def _post_init(application: Application) -> None:
+    async def _post_init(application: Application[Any, Any, Any, Any, Any, Any]) -> None:
         # Populate school_list inside a running event loop via the official
         # post_init hook, avoiding RuntimeError: no running event loop.
         await portal.post_init()
-        application.add_handler(portal.getHandler())
+        handler = cast(
+            ConversationHandler[Any],
+            portal.getHandler(),  # type: ignore[reportUnknownArgumentType]
+        )
+        application.add_handler(handler)
 
-    async def _post_shutdown(application: Application) -> None:
+    async def _post_shutdown(application: Application[Any, Any, Any, Any, Any, Any]) -> None:
         # Close the aiohttp session cleanly on shutdown.
         await portal.logout()
 
     application = (
         ApplicationBuilder()
         .token(TELEGRAM_API_TOKEN)
-        .post_init(_post_init)
+        .post_init(_post_init)  # type: ignore[reportUnknownMemberType]
         .post_shutdown(_post_shutdown)
         .build()
     )
