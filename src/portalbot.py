@@ -7,7 +7,6 @@ from telegram.ext import filters, ContextTypes, ConversationHandler, CommandHand
 from typing import Any, Optional
 from aiohttp import ClientSession
 from enum import Enum
-import asyncio
 from expiringdict import ExpiringDict
 from pychatgpt import Chat
 
@@ -58,8 +57,6 @@ class PortalBot(Portal):
         super().__init__(username, password, session=session)
         self.logger = logging.getLogger(PortalBot.__class__.__name__)
         self.cache = ExpiringDict(max_len=100, max_age_seconds=3600*6)
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.post_init())
 
     async def post_init(self):
         self.school_list = await self.list()

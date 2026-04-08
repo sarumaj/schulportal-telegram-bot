@@ -71,9 +71,10 @@ class Portal:
     def __init__(self, username: str, password: str, *, session: Optional[ClientSession] = None):
         self.username = username
         self.password = password
+        # Store the optionally provided session; actual creation is deferred to
+        # _get_session() so that no ClientSession is instantiated outside a
+        # running event loop (avoids RuntimeError: no running event loop).
         self._session = session
-        if self._session is None:
-            self._session = ClientSession()
         self._loggedIn = False
 
     @property
@@ -143,11 +144,24 @@ class Portal:
 
         Args:
             session: An optional aiohttp.ClientSession object to use for HTTP requests.
-                     If not provided, a new session will be created.
+                     If not provided, a new session will be created lazily on first use.
         """
         self._session = session
-        if self._session is None:
-            self._session = ClientSession
+
+    async def _get_session(self) -> ClientSession:
+        """
+        Return the current :class:`aiohttp.ClientSession`, creating a new one
+        lazily if none exists or if the previous one has been closed.
+
+        This ensures that ``ClientSession`` is never instantiated outside of a
+        running event loop, preventing ``RuntimeError: no running event loop``.
+
+        Returns:
+            ClientSession: An open aiohttp.ClientSession instance.
+        """
+        if self._session is None or self._session.closed:
+            self._session = ClientSession()
+        return self._session
 
     async def check_substitutes(self):
         """
@@ -161,7 +175,8 @@ class Portal:
         if not self._loggedIn:
             raise NotSignedIn("Sign in first.")
 
-        async with self._session.get(SCHULPORTAL_VERTRETUNGSPLAN_URL) as response:
+        session = await self._get_session()
+        async with session.get(SCHULPORTAL_VERTRETUNGSPLAN_URL) as response:
             content = await response.text()
             soup = getSoup(content)
             alert = soup.select_one('div[role="alert"]')
@@ -190,7 +205,8 @@ class Portal:
         if not self._loggedIn:
             raise NotSignedIn("Sign in first.")
 
-        async with self._session.get(SCHULPORTAL_MEINUNTERRICHT_URL) as response:
+        session = await self._get_session()
+        async with session.get(SCHULPORTAL_MEINUNTERRICHT_URL) as response:
             content = await response.text()
             soup = getSoup(content)
             tasks = []
@@ -228,11 +244,12 @@ class Portal:
         """
         if not self._loggedIn:
             raise NotSignedIn("Sign in first.")
-        await self._session.get(SCHULPORTAL_NACHRICHTEN_URL)
+        session = await self._get_session()
+        await session.get(SCHULPORTAL_NACHRICHTEN_URL)
         # requires RSA handshake and decryption:
         # GET ajax.php?f=rsaPublicKey
         # POST ajax.php?f=rsaHandshake&s={randint(0,2000)} {key:AES128 key self encrypted}
-        async with self._session.post(
+        async with session.post(
             SCHULPORTAL_NACHRICHTEN_URL,
             data=urlencode({
                 "a": "headers",
@@ -255,7 +272,8 @@ class Portal:
             list[dict[str:str]]: A list of dictionaries representing the schools, where each dictionary
             contains the keys 'school', 'city', and 'data-id'.
         """
-        async with self._session.get(SCHULPORTAL_START_URL) as response:
+        session = await self._get_session()
+        async with session.get(SCHULPORTAL_START_URL) as response:
             content = await response.text()
             soup = getSoup(content)
 
@@ -284,10 +302,8 @@ class Portal:
         Raises:
             LoginFailed: If the login process fails.
         """
-        if self._session.closed:
-            self._session = ClientSession()
-
-        async with self._session.get(SCHULPORTAL_LOGIN_URL, params={"i": str(id)}) as response:
+        session = await self._get_session()
+        async with session.get(SCHULPORTAL_LOGIN_URL, params={"i": str(id)}) as response:
             content = await response.text()
             soup = getSoup(content)
             form = {
@@ -300,14 +316,14 @@ class Portal:
                 "password": self.password,
             })
 
-            await self._session.post(
+            await session.post(
                 SCHULPORTAL_LOGIN_URL,
                 params={"i": str(id)},
                 data=urlencode(form),
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
 
-        async with self._session.get(SCHULPORTAL_START_URL, params={"i": str(id)}) as response:
+        async with session.get(SCHULPORTAL_START_URL, params={"i": str(id)}) as response:
             content = await response.text()
             soup = getSoup(content)
             errForm = soup.select_one('div[id="errorForm"]')
@@ -320,12 +336,12 @@ class Portal:
 
     async def logout(self):
         """
-        Log out from the portal.
+        Log out from the portal and close the underlying HTTP session.
         """
-        await self._session.get(SCHULPORTAL_START_URL, params={"logout": "1"})
-        self._loggedIn = False
-        if not self._session.closed:
+        if self._session is not None and not self._session.closed:
+            await self._session.get(SCHULPORTAL_START_URL, params={"logout": "1"})
             await self._session.close()
+        self._loggedIn = False
 
     async def __aenter__(self):
         return self

@@ -16,9 +16,25 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 
 
 def main():
-    application = ApplicationBuilder().token(TELEGRAM_API_TOKEN).build()
     portal = PortalBot("", "")
-    application.add_handler(portal.getHandler())
+
+    async def _post_init(application: Application) -> None:
+        # Populate school_list inside a running event loop via the official
+        # post_init hook, avoiding RuntimeError: no running event loop.
+        await portal.post_init()
+        application.add_handler(portal.getHandler())
+
+    async def _post_shutdown(application: Application) -> None:
+        # Close the aiohttp session cleanly on shutdown.
+        await portal.logout()
+
+    application = (
+        ApplicationBuilder()
+        .token(TELEGRAM_API_TOKEN)
+        .post_init(_post_init)
+        .post_shutdown(_post_shutdown)
+        .build()
+    )
 
     if APP_RUN_MODE != "PROD":
         portal.logger.log(logging.WARN, "running locally")
