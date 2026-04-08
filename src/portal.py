@@ -176,7 +176,7 @@ class Portal:
             # TODO: Implement
             raise NotImplemented(self.check_substitutes)
 
-    async def get_undone_homework(self):
+    async def get_undone_homework(self) -> List[Dict[str, str]]:
         """
         Retrieves a list of undone homework from a web portal.
 
@@ -251,12 +251,12 @@ class Portal:
             content = await response.text()
             print(content)
 
-    async def list(self) -> list[dict[str, str]]:
+    async def list(self) -> List[Dict[str, str]]:
         """
         Get a list of schools from the portal.
 
         Returns:
-            list[dict[str:str]]: A list of dictionaries representing the schools, where each dictionary
+            List[Dict[str, str]]: A list of dictionaries representing the schools, where each dictionary
             contains the keys 'school', 'city', and 'data-id'.
         """
         async with (await self.init_and_get_session()).get(SCHULPORTAL_START_URL) as response:
@@ -309,6 +309,13 @@ class Portal:
             )
 
         async with (await self.init_and_get_session()).get(SCHULPORTAL_START_URL, params={"i": str(id)}) as response:
+            try:
+                response.raise_for_status()
+            except Exception as e:
+                raise LoginFailed(
+                    f"Login failed with status code {response.status}.",
+                ) from e
+
             content = await response.text()
             soup = getSoup(content)
             errForm = soup.select_one('div[id="errorForm"]')
