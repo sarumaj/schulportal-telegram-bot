@@ -29,6 +29,10 @@ jobs:
           echo "$GIT_CRYPT_KEY" | base64 -d | git-crypt unlock - && \
           git-crypt status -e
 
+      - name: Install Heroku CLI
+        run: |
+          curl https://cli-assets.heroku.com/install.sh | sh
+
       - name: Get app url
         uses: akhileshns/heroku-deploy@v3.14.15
         with:
