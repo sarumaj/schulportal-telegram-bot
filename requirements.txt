@@ -2,7 +2,7 @@ aiogram==3.31.0
 aiohttp==3.14.3
 aiolimiter==1.2.1
 aiosignal==1.4.0
-anyio==4.15.0
+anyio==4.15.1
 APScheduler==3.11.3
 async-timeout==5.0.1
 attrs==26.1.0
