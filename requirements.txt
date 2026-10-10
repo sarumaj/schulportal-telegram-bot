@@ -44,7 +44,7 @@ socksio==1.0.0
 soupsieve==2.10
 svglib==2.3.0
 tinycss2==1.5.1
-tls-client==1.0.1
+tls-client==2.0.0
 tornado==6.5.10
 tzlocal==5.4.4
 urllib3==2.8.0
