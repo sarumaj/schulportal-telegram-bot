@@ -11,7 +11,7 @@ bs4==0.0.2
 cachetools==7.2.8
 certifi==2026.10.23
 cffi==2.1.1
-charset-normalizer==3.5.2
+charset-normalizer==3.5.3
 chatgptpy==1.0.8
 colorama==0.4.6
 cryptography==50.0.2
